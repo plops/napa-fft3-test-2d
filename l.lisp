@@ -168,7 +168,9 @@
 
 (defun canvas-test ()
   (with-ltk ()
-    (let* ((c (make-instance 'canvas :width (+ 515 512 ) :height 512))
+    (let* ((c (make-instance 'canvas :width (+ 515 512 ) :height 512
+			     :cursor "crosshair"
+			     ))
 	   
 	   (dat2 (image-load (make-image)
 			    (first
@@ -180,9 +182,20 @@
 	   (r (let ((x 210)
 		    (y 0))
 		(create-rectangle c x y (+ x 128) (+ y 128))))
-	   (im2 (create-image c 515 0 :image dat2)))
+	   (im2 (create-image c 515 0 :image dat2))
+	   (text (create-text c 10 10 "10 10")))
+      
+      (bind c "<Motion>" #'(lambda (evt)
+			     (itemdelete c text)
+			     (setf text (create-text c (+ 4 (event-x evt)) (+ 3 (event-y evt))
+						     (format nil "~d ~d~%" (event-x evt) (event-y evt))))
+			     (itemconfigure c text 'fill "red")
+			     ))
       (itemconfigure c r 'outline "red")
       (pack c :expand 1 :fill :both))))
 
 #+nil
 (canvas-Test)
+
+#+nil
+(ltk::ltktest)
