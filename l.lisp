@@ -1,31 +1,8 @@
 #.(require :ltk)
+#.(require "napa-fft3")
 (defpackage :l (:use :cl :ltk))
 (in-package :l)
 
-(with-ltk ()
-    (let ((b (make-instance 'button
-			    :master nil
-			    :text "bla"
-			    :command #'(lambda ()
-					 (format t "bla~%")))))
-      (pack b)))
-
-(defparameter *im* )
-
-
-
-(defun canvas-test ()
-  (with-ltk ()
-    (let* ((c (make-instance 'canvas))
-	   (line (create-line c (list 100 100 400 50 700 165)))
-	   (dat (image-load (make-image)
-			    (first
-			     (directory "~/dat/bla0*.pgm"))))
-	   (im (create-image c 10 10 :image dat)))
-      (pack c :expand 1 :fill :both))))
-
-#+nil
-(canvas-Test)
 
 (defun read-pgm (filename)
   (declare ((or pathname string) filename)
@@ -67,6 +44,16 @@
       (setf (aref a1 i) (* (/ 255d0) (aref d1 i))))
     a))
 
+(defun checker (a)
+  "multiply with [-1 +1 -1 ...; +1 -1 +1; ....; ...] to shift fourier transform into middle"
+  (let ((b (make-array (array-dimensions a)
+		       :element-type (array-element-type a))))
+   (destructuring-bind (h w) (array-dimensions a)
+     (dotimes (i w)
+       (dotimes (j h)
+	 (setf (aref b j i) (* (expt -1 (+ i j)) (aref a j i))))))
+   b))
+
 (defun ubyte (d &key (scale 1d0))
   (let* ((n (reduce #'* (array-dimensions d)))
 	 (a1 (make-array n
@@ -81,8 +68,7 @@
       (setf (aref a1 i) (min 255 (max 0 (floor (* scale (abs (aref d1 i))))))))
     a))
 
-(defparameter *dat* (double (read-pgm (first
-				(directory "~/dat/bla0*.pgm")))))
+
 
 (defun write-pgm (filename img)
   (declare (simple-string filename)
@@ -109,7 +95,7 @@
     nil))
 
 
-#.(ql:quickload "napa-fft3")
+
 (defun fft2 ()
  (destructuring-bind (h w) (array-dimensions *dat*)
    (let* ((a1 (make-array (* h w)
@@ -145,15 +131,28 @@
 	      (setf (aref out-final j i) (aref outcol j)))))
      (defparameter *out* out-final))))
 
-(time (fft2))
+#+nil
+(progn (defparameter *dat* (checker (double (read-pgm (first
+					       (directory "~/dat/bla0*.pgm"))))))
+       (fft2)
+       
 
-;; Evaluation took:
-;;   0.083 seconds of real time
-;;   0.085000 seconds of total run time (0.085000 user, 0.000000 system)
-;;   [ Run times consist of 0.005 seconds GC time, and 0.080 seconds non-GC time. ]
-;;   102.41% CPU
-;;   198,438,627 processor cycles
-;;   54,922,160 bytes consed
-  
+       (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0))) 
 
-(write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0)) 
+
+(defun canvas-test ()
+  (with-ltk ()
+    (let* ((c (make-instance 'canvas))
+	   (line (create-line c (list 100 100 400 50 700 165)))
+	   (dat (image-load (make-image)
+			    (first
+			     (directory "~/dat/bla0*.pgm"))))
+	   (dat2 (image-load (make-image)
+			    (first
+			     (directory "/dev/shm/o.pgm"))))
+	   (im (create-image c 0 0 :image dat))
+	   (im2 (create-image c 512 0 :image dat2)))
+      (pack c :expand 1 :fill :both))))
+
+#+nil
+(canvas-Test)
