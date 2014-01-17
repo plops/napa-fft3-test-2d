@@ -54,6 +54,31 @@
 	 (setf (aref b j i) (* (expt -1 (+ i j)) (aref a j i))))))
    b))
 
+(defun damp-edge (&key a (width .1))
+  "force the values on the edge of the array to be zero"
+  (destructuring-bind (h w) (array-dimensions a)
+   (let ((b (make-array (array-dimensions a)
+			:element-type (array-element-type a)))
+	 (win-x (make-array w :element-type 'double-float
+			    :initial-element 1d0))
+	 (win-y (make-array h :element-type 'double-float
+			    :initial-element 1d0)))
+     (let ((l (floor (* width w))))
+       (dotimes (i l)
+	 (setf (aref win-x i) (sin (/ (* .5 pi i) l))))
+       (dotimes (i l)
+	 (setf (aref win-x (+ w -1 (- i))) (sin (/ (* .5 pi i) l)))))
+     (let ((l (floor (* width h))))
+       (dotimes (i l)
+	 (setf (aref win-y i) (sin (/ (* .5 pi i) l))))
+       (dotimes (i l)
+	 (setf (aref win-y (+ h -1 (- i))) (sin (/ (* .5 pi i) l)))))
+     (destructuring-bind (h w) (array-dimensions a)
+       (dotimes (i w)
+	 (dotimes (j h)
+	   (setf (aref b j i) (* (aref win-x i) (aref win-y j) (aref a j i))))))
+     b)))
+
 (defun ubyte (d &key (scale 1d0))
   (let* ((n (reduce #'* (array-dimensions d)))
 	 (a1 (make-array n
@@ -97,7 +122,8 @@
 
 
 (defun fft2 ()
- (destructuring-bind (h w) (array-dimensions *dat*)
+  "use 1d fft from napa-fft3 to transform a real 2d image."
+  (destructuring-bind (h w) (array-dimensions *dat*)
    (let* ((a1 (make-array (* h w)
 			 :element-type 'double-float
 			 :displaced-to *dat*))
@@ -132,11 +158,11 @@
      (defparameter *out* out-final))))
 
 #+nil
-(progn (defparameter *dat* (checker (double (read-pgm (first
-					       (directory "~/dat/bla0*.pgm"))))))
+(progn (defparameter *dat* (damp-edge :a (checker (double (read-pgm (first
+								     (directory "~/dat/bla0*.pgm")))))))
        (fft2)
        
-
+       (write-pgm "/dev/shm/o2.pgm" (ubyte *dat* :scale 255d0))
        (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0))) 
 
 
@@ -146,12 +172,12 @@
 	   (line (create-line c (list 100 100 400 50 700 165)))
 	   (dat (image-load (make-image)
 			    (first
-			     (directory "~/dat/bla0*.pgm"))))
+			     (directory "/dev/shm/o2.pgm"))))
 	   (dat2 (image-load (make-image)
 			    (first
 			     (directory "/dev/shm/o.pgm"))))
 	   (im (create-image c 0 0 :image dat))
-	   (im2 (create-image c 512 0 :image dat2)))
+	   (im2 (create-image c 515 0 :image dat2)))
       (pack c :expand 1 :fill :both))))
 
 #+nil
