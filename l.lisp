@@ -168,16 +168,20 @@
 
 (defun canvas-test ()
   (with-ltk ()
-    (let* ((c (make-instance 'canvas))
-	   (line (create-line c (list 100 100 400 50 700 165)))
-	   (dat (image-load (make-image)
+    (let* ((c (make-instance 'canvas :width (+ 515 512 ) :height 512))
+	   
+	   (dat2 (image-load (make-image)
 			    (first
 			     (directory "/dev/shm/o2.pgm"))))
-	   (dat2 (image-load (make-image)
+	   (dat (image-load (make-image)
 			    (first
 			     (directory "/dev/shm/o.pgm"))))
 	   (im (create-image c 0 0 :image dat))
+	   (r (let ((x 210)
+		    (y 0))
+		(create-rectangle c x y (+ x 128) (+ y 128))))
 	   (im2 (create-image c 515 0 :image dat2)))
+      (itemconfigure c r 'outline "red")
       (pack c :expand 1 :fill :both))))
 
 #+nil
