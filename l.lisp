@@ -242,7 +242,8 @@ fft2 acts destructive on the data in the array *dat*"
 
 #+nil
 (let ((files (directory "/dev/shm/r/*.pgm")))
-  (let ((e (elt files 327))); loop for e in files do
+  (; let ((e (elt files 327)))
+   loop for e in files do
        
        (let ((base (string-trim (list #\/) (pathname-name e))))
 	 (defparameter *dat* (extract :a (checker (damp-edge :width .1 :a (double (read-pgm e))))))
@@ -252,6 +253,10 @@ fft2 acts destructive on the data in the array *dat*"
 	   (write-pgm (format nil "/dev/shm/o~a.pgm" base) (ubyte small :scale 1d0))
 	   (setf *dat* small) (fft2c)
 	   (write-pgm (format nil "/dev/shm/y~a.pgm" base) (ubyte *out* :scale .03d0))))))
+;; make mosaic from the reconstructed images
+;; montage  y* -tile 20x18 -geometry 128x128+0+0  mon.png
+
+
 ;; roi 121x89+546+390
 #+nil
 (list (+ 546 (floor 121 2))
