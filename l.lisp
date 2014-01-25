@@ -11,6 +11,7 @@
   (with-open-file (s filename)
     (unless (equal (symbol-name (read s)) "P5")
       (error "no PGM file"))
+    (read-line s)
     (let* ((w (read s))
            (h (read s))
            (grays (read s))
@@ -119,10 +120,11 @@
         (write-sequence data-1d s)))
     nil))
 
-
+(defvar *dat* nil)
 
 (defun fft2 ()
-  "use 1d fft from napa-fft3 to transform a real 2d image."
+  "use 1d fft from napa-fft3 to transform a real 2d image. for now,
+fft2 acts destructive on the data in the array *dat*"
   (destructuring-bind (h w) (array-dimensions *dat*)
    (let* ((a1 (make-array (* h w)
 			 :element-type 'double-float
@@ -157,6 +159,33 @@
 	      (setf (aref out-final j i) (aref outcol j)))))
      (defparameter *out* out-final))))
 
+(defun next-power-of-two (n)
+  (expt 2 (ceiling (log n 2))))
+
+(defun extract (a &key
+                (x (floor (array-dimension a 1) 2))
+                (y (floor (array-dimension a 0) 2)) 
+                (w (next-power-of-two (max x (- (array-dimension a 1) x))))
+                (h (next-power-of-two (max y (- (array-dimension a 0) y)))))
+  (let* ((b1 (make-array (* h w) :element-type (array-element-type a)
+                         :initial-element (coerce 0 (array-element-type a))
+			 ))
+         (b (make-array (list h w)
+                        :element-type (array-element-type a)
+                        :displaced-to b1))
+         (ox (- x (floor w 2)))
+         (oy (- y (floor h 2))))
+    (assert (<= 0 ox))
+    (assert (<= 0 oy))
+    (assert (< (+ w ox) (array-dimension a 1)))
+    (assert (< (+ h oy) (array-dimension a 0)))
+    (dotimes (j h)
+      (dotimes (i w)
+        (setf (aref b j i)
+              (aref a (+ j oy) (+ i ox)))))
+    b))
+
+
 #+nil
 (progn (defparameter *dat* (damp-edge :a (checker (double (read-pgm (first
 								     (directory "~/dat/bla0*.pgm")))))))
@@ -165,7 +194,17 @@
        (write-pgm "/dev/shm/o2.pgm" (ubyte *dat* :scale 255d0))
        (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0))) 
 
+#+nil
+(progn (defparameter *dat* (extract (damp-edge :width .3 :a (checker (double (read-pgm (elt
+									      (directory "/dev/shm/crop/*.pgm")
+									      32)))))))
+       (write-pgm "/dev/shm/o2.pgm" (ubyte *dat* :scale 255d0))
+       (fft2)
+       
+       
+       (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0)))
 
+(defvar *out* nil)
 (defun canvas-test ()
   (with-ltk ()
     (let* ((c (make-instance 'canvas :width (+ 515 512 ) :height 512
@@ -179,18 +218,42 @@
 			    (first
 			     (directory "/dev/shm/o.pgm"))))
 	   (im (create-image c 0 0 :image dat))
-	   (r (let ((x 210)
-		    (y 0))
-		(create-rectangle c x y (+ x 128) (+ y 128))))
+	   (r (let* ((x 286)
+		    (y 54)
+		    (w 76)
+		    (h w))
+		(create-rectangle c (- x (floor w 2))
+				  (- y (floor h 2))
+				  (+ x (floor w 2))
+				  (+ y (floor h 2)))))
 	   (im2 (create-image c 515 0 :image dat2))
 	   (text (create-text c 10 10 "10 10")))
       
-      (bind c "<Motion>" #'(lambda (evt)
-			     (itemdelete c text)
-			     (setf text (create-text c (+ 4 (event-x evt)) (+ 3 (event-y evt))
-						     (format nil "~d ~d~%" (event-x evt) (event-y evt))))
-			     (itemconfigure c text 'fill "red")
-			     ))
+      (bind c "<Motion>"
+	    #'(lambda (evt)
+		(itemdelete c text)
+		(setf text
+		      (create-text
+		       c
+		       (+ 4 (event-x evt))
+		       (+ 3 (event-y evt))
+		       (format nil "~4d ~4d ~a~%"
+			       (event-x evt) (event-y evt)
+			       (when *out*
+				 (destructuring-bind (h w)
+				     (array-dimensions *out*)
+				   (let ((z 
+					  (aref *out*
+						(min (1- h)
+						     (max 0
+							  (event-y evt)))
+						(min (1- w)
+						     (max 0
+							  (event-x evt))))))
+				     (format nil "~6,1f ~6,1f"
+					     (abs z)
+					     (* 180 (/ pi) (phase z)))))))))
+			     (itemconfigure c text 'fill "red")))
       (itemconfigure c r 'outline "red")
       (pack c :expand 1 :fill :both))))
 
