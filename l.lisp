@@ -159,6 +159,43 @@ fft2 acts destructive on the data in the array *dat*"
 	      (setf (aref out-final j i) (aref outcol j)))))
      (defparameter *out* out-final))))
 
+(defun fft2c ()
+  "use 1d fft from napa-fft3 to transform a complex 2d image. for now,
+fft2 acts destructive on the data in the array *dat*"
+  (destructuring-bind (h w) (array-dimensions *dat*)
+   (let* ((a1 (make-array (* h w)
+			 :element-type '(complex double-float)
+			 :displaced-to *dat*))
+	 (outline (make-array w
+			   :element-type '(complex double-float)))
+	 (out1 (make-array (* w h)
+			   :element-type '(complex double-float)))
+	  (out2 (make-array (list w h)
+			   :element-type '(complex double-float)
+			   :displaced-to out1))
+	  (outcol (make-array h
+			   :element-type '(complex double-float)))
+	  (out-final (make-array (list h w)
+			    :element-type '(complex double-float)
+			    )))
+     (loop for j below h do
+	  (let ((in (make-array w
+				:element-type '(complex double-float)
+				:displaced-to a1
+				:displaced-index-offset (* j w))))
+	    (napa-fft:fft in :size w :dst outline)
+	    (dotimes (i w)
+	      (setf (aref out2 i j) (aref outline i)))))
+     (loop for i below w do
+	  (let ((in (make-array h
+				:element-type '(complex double-float)
+				:displaced-to out1
+				:displaced-index-offset (* i h))))
+	    (napa-fft:fft in :size h :dst outcol)
+	    (dotimes (j h)
+	      (setf (aref out-final j i) (aref outcol j)))))
+     (defparameter *out* out-final))))
+
 (defun next-power-of-two (n)
   (expt 2 (ceiling (log n 2))))
 
@@ -211,7 +248,20 @@ fft2 acts destructive on the data in the array *dat*"
 	 (defparameter *dat* (extract :a (checker (damp-edge :width .1 :a (double (read-pgm e))))))
 	 (write-pgm (format nil "/dev/shm/f.pgm") (ubyte *dat* :scale 255d0))
 	 (fft2)
-	 (write-pgm (format nil "/dev/shm/o~a.pgm" base) (ubyte *out* :scale 1d0)))))
+	 (let ((small (damp-edge :width .1 :a (extract :x 370 :y 490 :w 128 :h 128 :a *out*))))
+	   (write-pgm (format nil "/dev/shm/o~a.pgm" base) (ubyte small :scale 1d0))
+	   (setf *dat* small) (fft2c)
+	   (write-pgm (format nil "/dev/shm/y~a.pgm" base) (ubyte *out* :scale .03d0))))))
+;; roi 121x89+546+390
+#+nil
+(list (+ 546 (floor 121 2))
+      (+ 390 (floor 89 2)))
+#+nil
+(list (/ (- (+ 546 (floor 121 2)) 256)
+	 1d0)
+      (/ (- (+ 390 (floor 89 2)) 512)
+	 1d0))
+
 #+nil
 (progn (defparameter *dat* (extract (checker (double (read-pgm (elt
 								
