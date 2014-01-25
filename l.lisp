@@ -162,47 +162,110 @@ fft2 acts destructive on the data in the array *dat*"
 (defun next-power-of-two (n)
   (expt 2 (ceiling (log n 2))))
 
-(defun extract (a &key
+(defun extract (&key
+		  a
                 (x (floor (array-dimension a 1) 2))
                 (y (floor (array-dimension a 0) 2)) 
-                (w (next-power-of-two (max x (- (array-dimension a 1) x))))
-                (h (next-power-of-two (max y (- (array-dimension a 0) y)))))
-  (let* ((b1 (make-array (* h w) :element-type (array-element-type a)
-                         :initial-element (coerce 0 (array-element-type a))
-			 ))
-         (b (make-array (list h w)
-                        :element-type (array-element-type a)
-                        :displaced-to b1))
-         (ox (- x (floor w 2)))
-         (oy (- y (floor h 2))))
-    (assert (<= 0 ox))
-    (assert (<= 0 oy))
-    (assert (< (+ w ox) (array-dimension a 1)))
-    (assert (< (+ h oy) (array-dimension a 0)))
-    (dotimes (j h)
-      (dotimes (i w)
-        (setf (aref b j i)
-              (aref a (+ j oy) (+ i ox)))))
-    b))
+                (w (next-power-of-two (array-dimension a 1) ;(max x (- (array-dimension a 1) x))
+		    ))
+                (h (next-power-of-two (array-dimension a 0) ;(max y (- (array-dimension a 0) y))
+				      )))
+  (destructuring-bind (hh ww) (array-dimensions a)
+   (let* ((zero (coerce 0 (array-element-type a)))
+	  (b1 (make-array (* h w) :element-type (array-element-type a)
+			  :initial-element zero))
+	  (b (make-array (list h w)
+			 :element-type (array-element-type a)
+			 :displaced-to b1))
+	  (ox (- x (floor w 2)))
+	  (oy (- y (floor h 2))))
+     ;; (assert (<= 0 ox))
+     ;; (assert (<= 0 oy))
+     ;; (assert (< (+ w ox) (array-dimension a 1)))
+     ;; (assert (< (+ h oy) (array-dimension a 0)))
+     (dotimes (j h)
+       (dotimes (i w)
+	 (setf (aref b j i)
+	       (let ((ii (+ i ox))
+		     (jj (+ j oy)))
+		 (if (and (<= 0 jj (1- hh)) (<= 0 ii (1- ww)))
+		     (aref a jj ii)
+		     zero)))))
+     b)))
 
 
 #+nil
 (progn (defparameter *dat* (damp-edge :a (checker (double (read-pgm (first
 								     (directory "~/dat/bla0*.pgm")))))))
+       (write-pgm "/dev/shm/o2.pgm" (ubyte *dat* :scale 255d0))
        (fft2)
        
-       (write-pgm "/dev/shm/o2.pgm" (ubyte *dat* :scale 255d0))
+       
        (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0))) 
 
 #+nil
-(progn (defparameter *dat* (extract (damp-edge :width .3 :a (checker (double (read-pgm (elt
-									      (directory "/dev/shm/crop/*.pgm")
-									      32)))))))
+(let ((files (directory "/dev/shm/r/*.pgm")))
+  (let ((e (elt files 327))); loop for e in files do
+       
+       (let ((base (string-trim (list #\/) (pathname-name e))))
+	 (defparameter *dat* (extract :a (checker (damp-edge :width .1 :a (double (read-pgm e))))))
+	 (write-pgm (format nil "/dev/shm/f.pgm") (ubyte *dat* :scale 255d0))
+	 (fft2)
+	 (write-pgm (format nil "/dev/shm/o~a.pgm" base) (ubyte *out* :scale 1d0)))))
+#+nil
+(progn (defparameter *dat* (extract (checker (double (read-pgm (elt
+								
+								59))))))
        (write-pgm "/dev/shm/o2.pgm" (ubyte *dat* :scale 255d0))
        (fft2)
        
        
        (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0)))
+
+(defun read-and-discard-comments (s)
+  (let ((l (read-line s)))
+    (unless (eq #\# (aref l 0))
+      l)))
+
+(read-char)
+
+(defparameter *eof-object* (make-symbol "EOF-OBJECT"))
+(defun eofp (char)
+  (eq char *eof-object*))
+(defun token-delimiterp (char)
+  (member char (list #\Newline #\Space #\Tab #\Return)))
+(defun token-commentp (char)
+  (eq char #\#))
+
+(defun digitp (char)
+  (member char (list #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)))
+
+(defun read-separate-and-process-whitespace (s)
+  (let ((res nil))
+    (loop for c = (read-char s nil *eof-object*) while
+	 (cond ((eofp c) nil)
+	       ((token-delimiterp c) (unread-char c s) t)
+	       ((token-commentp c) (unread-char c s) nil)
+	       (t t))
+	 do
+	 (push c res))
+    (reverse res)))
+
+(defun read-token (s)
+  (let ((c (read-char s nil *eof-object*)))
+    (unread-char c s)
+    (list (cond ((digitp c) :number)
+		((eq #\P c) :magic)
+		(t :unknown))
+	  (read-separate-and-process-whitespace s))))
+
+(with-open-file (s  (elt
+		     (directory "/dev/shm/crop/*.pgm")
+		     32))
+  (list   (read-token s)
+	  (read-token s)
+	  (read-token s)
+	  (read-token s)))
 
 (defvar *out* nil)
 (defun canvas-test ()
