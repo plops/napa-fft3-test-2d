@@ -252,7 +252,7 @@ fft2 acts destructive on the data in the array *dat*"
 	 (let ((small (damp-edge :width .1 :a (extract :x 370 :y 490 :w 128 :h 128 :a *out*))))
 	   (write-pgm (format nil "/dev/shm/o~a.pgm" base) (ubyte small :scale 1d0))
 	   (setf *dat* small) (fft2c)
-	   (write-pgm (format nil "/dev/shm/y~a.pgm" base) (ubyte *out* :scale .03d0))))))
+	   (write-pgm (format nil "/dev/shm/y~a.pgm" base) (ubyte *out* :scale .01d0))))))
 ;; make mosaic from the reconstructed images
 ;; montage  y* -tile 20x18 -geometry 128x128+0+0  mon.png
 
