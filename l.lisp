@@ -30,6 +30,18 @@
           (read-sequence data-1d s2))
         data))))
 
+(defun fftshift1 (in &key dst)
+  (let* ((n (length in))
+         (nh (ash n -1))
+	 (out (or dst (make-array n :element-type (array-element-type in)))))
+    (unless (= n (* 2 nh))
+      (error "fftshift1: Array sizes must be even."))
+    (dotimes (i n)
+      (let* ((ii (if (> i nh)
+                   (+ n nh (- i))
+                   (- nh i))))
+        (setf (aref out i) (aref in ii))))
+    out))
 
 (defun double (d)
   (let* ((n (reduce #'* (array-dimensions d)))
@@ -213,7 +225,7 @@ fft2 acts destructive on the data in the array *dat*"
 
 (declaim (optimize (speed 0) (safety 3) (debug 3)))
 
-(defun gauss-blur2c (&key a (sigma 15d0))
+(defun gauss-blur2c (&key a (sigma-x 15d0) (sigma-y sigma-x))
   "gaussian convolution of a 2d array. convolve each line and then
 each column by multiplying with a window in the fourier domain. no
 time-consuming bit-reversals are necessary.
@@ -225,13 +237,13 @@ SIGMA .. width of the gaussian in pixels"
     (let ((winx (make-array w :element-type '(complex double-float)))
 	  (row (make-array w :element-type '(complex double-float)))
 	  (row-out (make-array w :element-type '(complex double-float))))
-      (let ((n (/ (loop for i below w sum (exp (/ (- (expt i 2))
-						  (expt sigma 2)))))))
+      (let ((n (/ (loop for i below w sum (exp (/ (- (expt (- i (floor w 2)) 2))
+						  (expt sigma-x 2)))))))
        (dotimes (i w)
-	 (setf (aref winx i) (complex (* n (exp (/ (- (expt i 2))
-						    (expt sigma 2))))))))
+	 (setf (aref winx i) (complex (* n (exp (/ (- (expt (- i (floor w 2)) 2))
+						    (expt sigma-x 2))))))))
      
-     (let ((kwinx (napa-fft:fft winx :in-order nil)))
+     (let ((kwinx (napa-fft:fft (fftshift1 winx) :in-order nil)))
        (dotimes (j h)
 	 (let ((a1 (make-array w :element-type '(complex double-float)
 			       :displaced-to a :displaced-index-offset (* j w))))
@@ -243,12 +255,12 @@ SIGMA .. width of the gaussian in pixels"
     (let ((winy (make-array h :element-type '(complex double-float)))
 	  (col (make-array h :element-type '(complex double-float)))
 	  (col-in (make-array h :element-type '(complex double-float))))
-      (let ((n (/ (loop for j below h sum (exp (/ (- (expt j 2))
-						  (expt sigma 2)))))))
+      (let ((n (/ (loop for j below h sum (exp (/ (- (expt (- j (floor h 2)) 2))
+						  (expt sigma-y 2)))))))
 	(dotimes (j h)
-	  (setf (aref winy j) (complex (* n (exp (/ (- (expt j 2))
-						    (expt sigma 2))))))))
-      (let ((kwiny (napa-fft:fft winy :in-order nil)))
+	  (setf (aref winy j) (complex (* n (exp (/ (- (expt (- j (floor h 2)) 2))
+						    (expt sigma-y 2))))))))
+      (let ((kwiny (napa-fft:fft (fftshift1 winy) :in-order nil)))
 	(dotimes (i w)
 	  (dotimes (j h)
 	    (setf (aref col-in j) (aref a j i)))
@@ -328,6 +340,7 @@ new array with the results"
     (dotimes (i (length c1))
       (setf (aref c1 i) (realpart (aref a1 i))))
     c))
+
 (defun .abs (a)
   (let* ((c (make-array (array-dimensions a) :element-type 'double-float))
 	(a1 (.linear a))
@@ -383,14 +396,26 @@ new array with the results"
      (let ((base (string-trim (list #\/) (pathname-name e))))
        (defparameter *dat* (extract :a (complex-double-float (read-pgm e))))
        (let ((wedge (.exp
-		     (.+ (s* :s (complex 0d0 (* (- 370 256) pi)) :a (xx :a *dat*))
-			 (s* :s (complex 0d0 (* (- 490 512) pi)) :a (yy :a *dat*))))))
-	 (write-pgm (format nil "/dev/shm/f1.pgm") (.ubyte :scale 255 :a *dat*))
-	 (write-pgm (format nil "/dev/shm/f2.pgm") (.ubyte :scale 127 :a (s+ :s 1 :a (.realpart (.* *dat* wedge)))))
-	 (write-pgm (format nil "/dev/shm/f3.pgm") (.ubyte :scale 1d0
-							   :a (s* :s (* 255 (/ (* 2 pi)))
-								  :a (s+ :s pi :a
-									 (.phase (gauss-blur2c :sigma 10d0 :a (.* *dat* wedge))))))))
+		     (.+ (s* :s (complex 0d0 (* (- 490 256) pi)) :a (xx :a *dat*))
+			 (s* :s (complex 0d0 (* (- 450 512) pi)) :a (yy :a *dat*))))))
+	 (let* ((sx 3.9d0) (sy (* 2 sx)))
+	   (write-pgm (format nil "/dev/shm/f1.pgm") (.ubyte :scale 255 :a *dat*))
+	   (write-pgm (format nil "/dev/shm/f2.pgm") (.ubyte :scale 127 :a (s+ :s 1 :a (.realpart (.* *dat* wedge)))))
+	  (write-pgm (format nil "/dev/shm/f3.pgm")
+		     (.ubyte :scale 9000d0
+			     :a (.abs (gauss-blur2c :sigma-x sx :sigma-y sy :a (.* *dat* wedge))))
+		     #+nil (.ubyte :scale 9055d0
+				   :a (gauss-blur2c :sigma-x 10d0 :a (.* *dat* wedge))))
+	  (write-pgm (format nil "/dev/shm/f4.pgm")
+		     (.ubyte :scale 1d0
+			     :a (s* :s (* 255 (/ (* 4 pi)))
+				    :a (s+ :s pi :a
+					   (.phase (gauss-blur2c :sigma-x sx :sigma-y sy :a (.* *dat* wedge))))))
+		     )
+	  (setf *dat* (gauss-blur2c :sigma-x sx :sigma-y sy :a (.* *dat* wedge)))
+	  (fft2c)
+	  (write-pgm (format nil "/dev/shm/f5.pgm")
+		     (.ubyte :scale 1 :a *out*))))
        ))))
 
 
