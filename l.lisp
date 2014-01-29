@@ -286,10 +286,10 @@ SIGMA .. width of the gaussian in pixels"
       (setf (aref c1 i) (* (aref a1 i) (aref b1 i))))
     c))
 
-(defun s* (&key a (s 1d0))
+(defun s* (&key a (s 1d0) (type (array-element-type a)))
   "multiply elements of array s with scalar s"
   (declare (type (array * *) a))
-  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+  (let* ((c (make-array (array-dimensions a) :element-type type))
 	 (a1 (.linear a))
 	 (c1 (.linear c)))
     (dotimes (i (length c1))
@@ -305,9 +305,9 @@ SIGMA .. width of the gaussian in pixels"
       (setf (aref c1 i) (* (aref a1 i) s)))
     c))
 
-(defun .+ (a b)
+(defun .+ (a b &key (type (array-element-type a)))
   "add elements of two arrays and return a new array with the results"
-  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+  (let* ((c (make-array (array-dimensions a) :element-type type))
 	(a1 (.linear a))
 	(b1 (.linear b))
 	(c1 (.linear c)))
@@ -323,6 +323,14 @@ new array with the results"
 	(c1 (.linear c)))
     (dotimes (i (length c1))
       (setf (aref c1 i) (exp (aref a1 i))))
+    c))
+
+(defun .expt (&key (v 1d0) a)
+  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+	(a1 (.linear a))
+	(c1 (.linear c)))
+    (dotimes (i (length c1))
+      (setf (aref c1 i) (expt v (aref a1 i))))
     c))
 
 (defun .phase (a)
@@ -367,25 +375,40 @@ new array with the results"
       (length a1))))
 
 
-(defun xx (&key a type)
+(defun xx (&key a (type (array-element-type a)) (center t))
+  
   (assert (= 2 (length (array-dimensions a))))
-  (let* ((c (make-array (array-dimensions a) :element-type (or type (array-element-type a)))))
+  (let* ((c (make-array (array-dimensions a) :element-type type)))
     (destructuring-bind (h w) (array-dimensions a)
-      (dotimes (j h)
-	(dotimes (i w)
-	  (setf (aref c j i) (complex (/ (- i (floor w 2))
-				 (* 1d0 w)))))))
+      (cond
+	((eq type 'fixnum)
+	 (dotimes (j h)
+	   (dotimes (i w)
+	     (setf (aref c j i) (- i (if center (floor w 2) 0))))))
+	((equal type '(complex double-float))
+	 (dotimes (j h)
+	   (dotimes (i w)
+	     (setf (aref c j i) (complex (/ (- i (if center (floor w 2) 0))
+					    (* 1d0 w)))))))))
     c))
 
-(defun yy (&key a type)
+(defun yy (&key a (type (array-element-type a)) (center t))
+  
   (assert (= 2 (length (array-dimensions a))))
-  (let* ((c (make-array (array-dimensions a) :element-type (or type (array-element-type a)))))
+  (let* ((c (make-array (array-dimensions a) :element-type type)))
     (destructuring-bind (h w) (array-dimensions a)
-      (dotimes (j h)
-	(dotimes (i w)
-	  (setf (aref c j i) (complex (/ (- j (floor h 2))
-				 (* 1d0 h)))))))
+      (cond
+	((eq type 'fixnum)
+	 (dotimes (j h)
+	   (dotimes (i w)
+	     (setf (aref c j i) (- j (if center (floor h 2) 0))))))
+	((equal type '(complex double-float))
+	 (dotimes (j h)
+	   (dotimes (i w)
+	     (setf (aref c j i) (complex (/ (- h (if center (floor h 2) 0))
+					    (* 1d0 h)))))))))
     c))
+
 
 #+nil
 (time
@@ -412,7 +435,10 @@ new array with the results"
 				    :a (s+ :s pi :a
 					   (.phase (gauss-blur2c :sigma-x sx :sigma-y sy :a (.* *dat* wedge))))))
 		     )
-	  (setf *dat* (gauss-blur2c :sigma-x sx :sigma-y sy :a (.* *dat* wedge)))
+	  (setf *dat* (.* (gauss-blur2c :sigma-x sx :sigma-y sy :a (.* *dat* wedge))
+			  (.expt :v -1d0 :a (s* :type 'double-float :a
+						(.+ (xx :a *dat* :type 'fixnum)
+						    (yy :a *dat* :type 'fixnum))))))
 	  (fft2c)
 	  (write-pgm (format nil "/dev/shm/f5.pgm")
 		     (.ubyte :scale 1 :a *out*))))
