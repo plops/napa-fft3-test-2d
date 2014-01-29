@@ -258,17 +258,78 @@ SIGMA .. width of the gaussian in pixels"
       a)))
 
 (defun .linear (a)
+  "return a 1d array, pointing into a (potentially multi-dimensional) array"
   (make-array (reduce #'* (array-dimensions a))
 	      :element-type (array-element-type a)
 	      :displaced-to a))
 
 (defun .* (a b)
+  "multiply elements of arrays a and b"
   (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
 	(a1 (.linear a))
 	(b1 (.linear b))
 	(c1 (.linear c)))
     (dotimes (i (length c))
       (setf (aref c1 i) (* (aref a1 i) (aref b1 i))))
+    c))
+
+(defun s* (&key a (s 1d0))
+  "multiply elements of array s with scalar s"
+  (declare (type (array * *) a))
+  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+	 (a1 (.linear a))
+	 (c1 (.linear c)))
+    (dotimes (i (length c))
+      (setf (aref c1 i) (* (aref a1 i) s)))
+    c))
+
+(defun s+ (&key a s)
+  "add a scalar s to an array"
+  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+	 (a1 (.linear a))
+	 (c1 (.linear c)))
+    (dotimes (i (length c))
+      (setf (aref c1 i) (* (aref a1 i) s)))
+    c))
+
+(defun .+ (a b)
+  "add elements of two arrays and return a new array with the results"
+  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+	(a1 (.linear a))
+	(b1 (.linear b))
+	(c1 (.linear c)))
+    (dotimes (i (length c))
+      (setf (aref c1 i) (+ (aref a1 i) (aref b1 i))))
+    c))
+
+(defun .exp (a)
+  "apply exponential function to each element of an array and return a
+new array with the results"
+  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+	(a1 (.linear a))
+	(c1 (.linear c)))
+    (dotimes (i (length c))
+      (setf (aref c1 i) (exp (aref a1 i))))
+    c))
+
+(defun xx (&key a type)
+  (assert (= 2 (length (array-dimensions a))))
+  (let* ((c (make-array (array-dimensions a) :element-type (or type (array-element-type a)))))
+    (destructuring-bind (h w) (array-dimensions a)
+      (dotimes (j h)
+	(dotimes (i w)
+	  (setf (aref c j i) (complex (/ (- i (floor w 2))
+				 (* 1d0 w)))))))
+    c))
+
+(defun yy (&key a type)
+  (assert (= 2 (length (array-dimensions a))))
+  (let* ((c (make-array (array-dimensions a) :element-type (or type (array-element-type a)))))
+    (destructuring-bind (h w) (array-dimensions a)
+      (dotimes (j h)
+	(dotimes (i w)
+	  (setf (aref c j i) (complex (/ (- i (floor w 2))
+				 (* 1d0 w)))))))
     c))
 
 #+nil
@@ -279,8 +340,13 @@ SIGMA .. width of the gaussian in pixels"
        
      (let ((base (string-trim (list #\/) (pathname-name e))))
        (defparameter *dat* (extract :a (complex-double-float (read-pgm e))))
-       (write-pgm (format nil "/dev/shm/f.pgm") (ubyte *dat* :scale 255d0))
-       (write-pgm (format nil "/dev/shm/f2.pgm") (ubyte (gauss-blur2c :a *dat*) :scale 255d0))
+       (s* :a *dat*)
+       nil
+      #+nil (let ((wedge (exp (.+ (s* :s (* 30 pi) :a (xx :a *dat*))
+			     (s* :s (complex (* 3 pi)) :a (yy :a *dat*))))))
+	 
+	 #+nil (write-pgm (format nil "/dev/shm/f.pgm") (ubyte (.* *dat* wedge) :scale 255d0))
+	 #+nil (write-pgm (format nil "/dev/shm/f2.pgm") (ubyte (gauss-blur2c :a (.* *dat* wedge)) :scale 255d0)))
        ))))
 
 
