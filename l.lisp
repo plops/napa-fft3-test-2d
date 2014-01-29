@@ -45,6 +45,20 @@
       (setf (aref a1 i) (* (/ 255d0) (aref d1 i))))
     a))
 
+(defun complex-double-float (d)
+  (let* ((n (reduce #'* (array-dimensions d)))
+	 (a1 (make-array n
+			 :element-type '(complex double-float)))
+	 (a (make-array (array-dimensions d)
+			:element-type (array-element-type a1)
+			:displaced-to a1))
+	 (d1 (make-array n
+			 :element-type (array-element-type d)
+			 :displaced-to d)))
+    (dotimes (i n)
+      (setf (aref a1 i) (complex (* (/ 255d0) (aref d1 i)))))
+    a))
+
 (defun checker (a)
   "multiply with [-1 +1 -1 ...; +1 -1 +1; ....; ...] to shift fourier transform into middle"
   (let ((b (make-array (array-dimensions a)
@@ -168,11 +182,11 @@ fft2 acts destructive on the data in the array *dat*"
 			 :displaced-to *dat*))
 	 (outline (make-array w
 			   :element-type '(complex double-float)))
-	 (out1 (make-array (* w h)
-			   :element-type '(complex double-float)))
+	  (out1 (make-array (* w h)
+			    :element-type '(complex double-float)))
 	  (out2 (make-array (list w h)
-			   :element-type '(complex double-float)
-			   :displaced-to out1))
+			    :element-type '(complex double-float)
+			    :displaced-to out1))
 	  (outcol (make-array h
 			   :element-type '(complex double-float)))
 	  (out-final (make-array (list h w)
@@ -195,6 +209,80 @@ fft2 acts destructive on the data in the array *dat*"
 	    (dotimes (j h)
 	      (setf (aref out-final j i) (aref outcol j)))))
      (defparameter *out* out-final))))
+
+(declaim (optimize (speed 0) (safety 3) (debug 3)))
+
+(defun gauss-blur2c (&key a (sigma 15d0))
+  "gaussian convolution of a 2d array. convolve each line and then
+each column by multiplying with a window in the fourier domain. no
+time-consuming bit-reversals are necessary.
+A .. 2d input image, its contents will be destroyed and replaced with
+     the result.
+SIGMA .. width of the gaussian in pixels"
+  (declare (type (array (complex double-float) 2) a))
+  (destructuring-bind (h w) (array-dimensions a)
+    (let ((winx (make-array w :element-type '(complex double-float)))
+	  (row (make-array w :element-type '(complex double-float)))
+	  (row-out (make-array w :element-type '(complex double-float))))
+      (let ((n (/ (loop for i below w sum (exp (/ (- (expt i 2))
+						  (expt sigma 2)))))))
+       (dotimes (i w)
+	 (setf (aref winx i) (complex (* n (exp (/ (- (expt i 2))
+						    (expt sigma 2))))))))
+     
+     (let ((kwinx (napa-fft:fft winx :in-order nil)))
+       (dotimes (j h)
+	 (let ((a1 (make-array w :element-type '(complex double-float)
+			       :displaced-to a :displaced-index-offset (* j w))))
+	   (napa-fft:fft a1 :in-order nil :dst row)
+	   (napa-fft:ifft row :in-order nil :window kwinx :dst row-out)
+	   (dotimes (i w) ;; unfortunately, ifft wants a simple-array as dst
+	     (setf (aref a j i) (aref row-out i)))))))
+    
+    (let ((winy (make-array h :element-type '(complex double-float)))
+	  (col (make-array h :element-type '(complex double-float)))
+	  (col-in (make-array h :element-type '(complex double-float))))
+      (let ((n (/ (loop for j below h sum (exp (/ (- (expt j 2))
+						  (expt sigma 2)))))))
+	(dotimes (j h)
+	  (setf (aref winy j) (complex (* n (exp (/ (- (expt j 2))
+						    (expt sigma 2))))))))
+      (let ((kwiny (napa-fft:fft winy :in-order nil)))
+	(dotimes (i w)
+	  (dotimes (j h)
+	    (setf (aref col-in j) (aref a j i)))
+	  (napa-fft:fft col-in :in-order nil :dst col)
+	  (napa-fft:ifft col :in-order nil :window kwiny :dst col-in)
+	  (dotimes (j h)
+	    (setf (aref a j i) (aref col-in j)))))
+      a)))
+
+(defun .linear (a)
+  (make-array (reduce #'* (array-dimensions a))
+	      :element-type (array-element-type a)
+	      :displaced-to a))
+
+(defun .* (a b)
+  (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
+	(a1 (.linear a))
+	(b1 (.linear b))
+	(c1 (.linear c)))
+    (dotimes (i (length c))
+      (setf (aref c1 i) (* (aref a1 i) (aref b1 i))))
+    c))
+
+#+nil
+(time
+ (let ((files (directory "/home/martin/dat/r/*.pgm")))
+   (let ((e (elt files 327)))
+					;loop for e in files do
+       
+     (let ((base (string-trim (list #\/) (pathname-name e))))
+       (defparameter *dat* (extract :a (complex-double-float (read-pgm e))))
+       (write-pgm (format nil "/dev/shm/f.pgm") (ubyte *dat* :scale 255d0))
+       (write-pgm (format nil "/dev/shm/f2.pgm") (ubyte (gauss-blur2c :a *dat*) :scale 255d0))
+       ))))
+
 
 (defun next-power-of-two (n)
   (expt 2 (ceiling (log n 2))))
@@ -241,7 +329,7 @@ fft2 acts destructive on the data in the array *dat*"
        (write-pgm "/dev/shm/o.pgm" (ubyte *out* :scale 1d0))) 
 
 #+nil
-(let ((files (directory "/dev/shm/r/*.pgm")))
+(let ((files (directory "/home/martin/dat/r/*.pgm")))
   (; let ((e (elt files 327)))
    loop for e in files do
        
@@ -249,6 +337,7 @@ fft2 acts destructive on the data in the array *dat*"
 	 (defparameter *dat* (extract :a (checker (damp-edge :width .1 :a (double (read-pgm e))))))
 	 (write-pgm (format nil "/dev/shm/f.pgm") (ubyte *dat* :scale 255d0))
 	 (fft2)
+	 (write-pgm (format nil "/dev/shm/o.pgm") (ubyte *out* :scale 1d0))
 	 (let ((small (damp-edge :width .1 :a (extract :x 370 :y 490 :w 128 :h 128 :a *out*))))
 	   (write-pgm (format nil "/dev/shm/o~a.pgm" base) (ubyte small :scale 1d0))
 	   (setf *dat* small) (fft2c)
