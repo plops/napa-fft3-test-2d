@@ -94,8 +94,9 @@
 	   (setf (aref b j i) (* (aref win-x i) (aref win-y j) (aref a j i))))))
      b)))
 
-(defun ubyte (d &key (scale 1d0))
-  (let* ((n (reduce #'* (array-dimensions d)))
+(defun .ubyte (&key a (scale 1d0))
+  (let* ((d a)
+	 (n (reduce #'* (array-dimensions d)))
 	 (a1 (make-array n
 			 :element-type '(unsigned-byte 8)))
 	 (a (make-array (array-dimensions d)
@@ -269,7 +270,7 @@ SIGMA .. width of the gaussian in pixels"
 	(a1 (.linear a))
 	(b1 (.linear b))
 	(c1 (.linear c)))
-    (dotimes (i (length c))
+    (dotimes (i (length c1))
       (setf (aref c1 i) (* (aref a1 i) (aref b1 i))))
     c))
 
@@ -279,7 +280,7 @@ SIGMA .. width of the gaussian in pixels"
   (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
 	 (a1 (.linear a))
 	 (c1 (.linear c)))
-    (dotimes (i (length c))
+    (dotimes (i (length c1))
       (setf (aref c1 i) (* (aref a1 i) s)))
     c))
 
@@ -288,7 +289,7 @@ SIGMA .. width of the gaussian in pixels"
   (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
 	 (a1 (.linear a))
 	 (c1 (.linear c)))
-    (dotimes (i (length c))
+    (dotimes (i (length c1))
       (setf (aref c1 i) (* (aref a1 i) s)))
     c))
 
@@ -298,7 +299,7 @@ SIGMA .. width of the gaussian in pixels"
 	(a1 (.linear a))
 	(b1 (.linear b))
 	(c1 (.linear c)))
-    (dotimes (i (length c))
+    (dotimes (i (length c1))
       (setf (aref c1 i) (+ (aref a1 i) (aref b1 i))))
     c))
 
@@ -308,9 +309,50 @@ new array with the results"
   (let* ((c (make-array (array-dimensions a) :element-type (array-element-type a)))
 	(a1 (.linear a))
 	(c1 (.linear c)))
-    (dotimes (i (length c))
+    (dotimes (i (length c1))
       (setf (aref c1 i) (exp (aref a1 i))))
     c))
+
+(defun .phase (a)
+  (let* ((c (make-array (array-dimensions a) :element-type 'double-float))
+	(a1 (.linear a))
+	(c1 (.linear c)))
+    (dotimes (i (length c1))
+      (setf (aref c1 i) (phase (aref a1 i))))
+    c))
+
+(defun .realpart (a)
+  (let* ((c (make-array (array-dimensions a) :element-type 'double-float))
+	(a1 (.linear a))
+	(c1 (.linear c)))
+    (dotimes (i (length c1))
+      (setf (aref c1 i) (realpart (aref a1 i))))
+    c))
+(defun .abs (a)
+  (let* ((c (make-array (array-dimensions a) :element-type 'double-float))
+	(a1 (.linear a))
+	(c1 (.linear c)))
+    (dotimes (i (length c1))
+      (setf (aref c1 i) (abs (aref a1 i))))
+    c))
+
+(defun .imagpart (a)
+  (let* ((c (make-array (array-dimensions a) :element-type 'double-float))
+	(a1 (.linear a))
+	(c1 (.linear c)))
+    (dotimes (i (length c1))
+      (setf (aref c1 i) (imagpart (aref a1 i))))
+    c))
+
+(defun .max (a)
+  (reduce #'max (.linear a)))
+(defun .min (a)
+  (reduce #'min (.linear a)))
+(defun .mean (a)
+  (let ((a1 (.linear a)))
+   (/ (reduce #'+ a1)
+      (length a1))))
+
 
 (defun xx (&key a type)
   (assert (= 2 (length (array-dimensions a))))
@@ -328,8 +370,8 @@ new array with the results"
     (destructuring-bind (h w) (array-dimensions a)
       (dotimes (j h)
 	(dotimes (i w)
-	  (setf (aref c j i) (complex (/ (- i (floor w 2))
-				 (* 1d0 w)))))))
+	  (setf (aref c j i) (complex (/ (- j (floor h 2))
+				 (* 1d0 h)))))))
     c))
 
 #+nil
@@ -340,16 +382,20 @@ new array with the results"
        
      (let ((base (string-trim (list #\/) (pathname-name e))))
        (defparameter *dat* (extract :a (complex-double-float (read-pgm e))))
-       (s* :a *dat*)
-       nil
-      #+nil (let ((wedge (exp (.+ (s* :s (* 30 pi) :a (xx :a *dat*))
-			     (s* :s (complex (* 3 pi)) :a (yy :a *dat*))))))
-	 
-	 #+nil (write-pgm (format nil "/dev/shm/f.pgm") (ubyte (.* *dat* wedge) :scale 255d0))
-	 #+nil (write-pgm (format nil "/dev/shm/f2.pgm") (ubyte (gauss-blur2c :a (.* *dat* wedge)) :scale 255d0)))
+       (let ((wedge (.exp
+		     (.+ (s* :s (complex 0d0 (* (- 370 256) pi)) :a (xx :a *dat*))
+			 (s* :s (complex 0d0 (* (- 490 512) pi)) :a (yy :a *dat*))))))
+	 (write-pgm (format nil "/dev/shm/f1.pgm") (.ubyte :scale 255 :a *dat*))
+	 (write-pgm (format nil "/dev/shm/f2.pgm") (.ubyte :scale 127 :a (s+ :s 1 :a (.realpart (.* *dat* wedge)))))
+	 (write-pgm (format nil "/dev/shm/f3.pgm") (.ubyte :scale 1d0
+							   :a (s* :s (* 255 (/ (* 2 pi)))
+								  :a (s+ :s pi :a
+									 (.phase (gauss-blur2c :sigma 10d0 :a (.* *dat* wedge))))))))
        ))))
 
 
+;(- 370 256)
+;(- 490 512)
 (defun next-power-of-two (n)
   (expt 2 (ceiling (log n 2))))
 
